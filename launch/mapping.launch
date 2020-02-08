@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="debug"                           default="false"/>
+  <arg name="close_hit_occupancy_probability" default="0.9"/>
+  <arg name="far_hit_occupancy_probability"   default="0.05"/>
+  <arg name="hit_threshold"                   default="8"/>
+  <arg name="occupancy_odds_buffer"           default="5.0"/>
+  <arg name="skip_n_scans"                    default="10"/>
+
+  <node name="turtlebot_mapping_node" pkg="turtlebot_slam" type="mapping_node"
+        output="screen">
+    <param name="debug"                           value="$(arg debug)"/>
+    <param name="close_hit_occupancy_probability" value="$(arg close_hit_occupancy_probability)"/>
+    <param name="far_hit_occupancy_probability"   value="$(arg far_hit_occupancy_probability)"/>
+    <param name="hit_threshold"                   value="$(arg hit_threshold)"/>
+    <param name="skip_n_scans"                    value="$(arg skip_n_scans)"/>
+  </node>
+
+</launch>
