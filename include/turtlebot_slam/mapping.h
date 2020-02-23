@@ -6,6 +6,7 @@
 #include <dynamic_reconfigure/server.h>
 #include <gazebo_msgs/ModelStates.h>
 #include <geometry_msgs/Point.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <ros/ros.h>
 #include <sensor_msgs/LaserScan.h>
@@ -59,10 +60,12 @@ protected:
 
   // Subscribers
   ros::Subscriber pose_sub_;
+  ros::Subscriber ips_sub_;
   ros::Subscriber scan_sub_;
 
   // Subscriber Callbacks
   void poseCallback(const gazebo_msgs::ModelStatesConstPtr& states);
+  void ipsCallback(const geometry_msgs::PoseWithCovarianceStampedPtr& pose);
   void scanCallback(const sensor_msgs::LaserScanConstPtr& scan);
 
   // Publisher functions

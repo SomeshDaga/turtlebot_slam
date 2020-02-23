@@ -4,6 +4,7 @@
 #include <gazebo_msgs/ModelStates.h>
 #include <geometry_msgs/Point.h>
 #include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <nav_msgs/OccupancyGrid.h>
 #include <ros/ros.h>
@@ -59,6 +60,7 @@ Mapping::Mapping(ros::NodeHandle& nh,
 
   // Initialize subscribers
   pose_sub_ = nh_.subscribe<gazebo_msgs::ModelStates>("gazebo/model_states", 1, &Mapping::poseCallback, this);
+  ips_sub_ = nh_.subscribe("indoor_pos", 1, &Mapping::ipsCallback, this);
   scan_sub_ = nh_.subscribe<sensor_msgs::LaserScan>("scan", 1, &Mapping::scanCallback, this);
 
   // Initialize the grid map to a default size of 20m x 20m
@@ -300,6 +302,12 @@ void Mapping::publishMap(const ros::TimerEvent& e)
 
   // Publish the occupancy grid
   map_pub_.publish(map_msg);
+}
+
+void Mapping::ipsCallback(const geometry_msgs::PoseWithCovarianceStampedPtr& pose)
+{
+  robot_position_.x = pose->pose.pose.position.x;
+  robot_position_.y = pose->pose.pose.position.y;
 }
 
 void Mapping::poseCallback(const gazebo_msgs::ModelStatesConstPtr& states)
