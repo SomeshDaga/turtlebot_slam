@@ -94,6 +94,8 @@ private:
   double far_hit_occupancy_probability_;
   int hit_threshold_;
   double unknown_occupancy_odds_buffer_;
+  double saturation_log_odds_occupied_;
+  double saturation_log_odds_free_;
 
   // Process rate parameters
   double loop_hz_;

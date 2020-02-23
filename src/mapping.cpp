@@ -59,8 +59,8 @@ Mapping::Mapping(ros::NodeHandle& nh,
   viz_pub_ = nh_.advertise<visualization_msgs::Marker>("bresenham_visualization", 1, true);
 
   // Initialize subscribers
-  pose_sub_ = nh_.subscribe<gazebo_msgs::ModelStates>("gazebo/model_states", 1, &Mapping::poseCallback, this);
-  ips_sub_ = nh_.subscribe("indoor_pos", 1, &Mapping::ipsCallback, this);
+  // pose_sub_ = nh_.subscribe<gazebo_msgs::ModelStates>("gazebo/model_states", 1, &Mapping::poseCallback, this);
+  // ips_sub_ = nh_.subscribe("indoor_pos", 1, &Mapping::ipsCallback, this);
   scan_sub_ = nh_.subscribe<sensor_msgs::LaserScan>("scan", 1, &Mapping::scanCallback, this);
 
   // Initialize the grid map to a default size of 20m x 20m
@@ -111,10 +111,29 @@ void Mapping::drCallback(turtlebot_slam::MappingConfig &config, uint32_t level)
   close_hit_occupancy_probability_ = config.close_hit_occupancy_probability;
   far_hit_occupancy_probability_ = config.far_hit_occupancy_probability;
   unknown_occupancy_odds_buffer_ = config.occupancy_odds_buffer;
+  saturation_log_odds_occupied_ = config.saturation_occupied;
+  saturation_log_odds_free_ = config.saturation_free;
 }
 
 void Mapping::updateMap(geometry_msgs::Point scan_point)
 {
+  geometry_msgs::TransformStamped base_to_odom_tf;
+  // Get position of robot in odom frame from tf tree
+  if (tf_buffer_.canTransform(odom_frame_, base_frame_, ros::Time(0)))
+    base_to_odom_tf = tf_buffer_.lookupTransform(odom_frame_, base_frame_, ros::Time(0));
+  else
+  {
+    ROS_ERROR_THROTTLE(1.0,
+                       "Failed to get transform from %s to %s!",
+                       base_frame_.c_str(),
+                       odom_frame_.c_str());
+    return;
+  }
+
+  robot_position_.x = base_to_odom_tf.transform.translation.x;
+  robot_position_.y = base_to_odom_tf.transform.translation.y;
+  robot_position_.z = 0.0;
+
   // Get the cell position of the robot
   std::pair<int16_t, int16_t> robot_cell = worldToMap(robot_position_.x,
                                                       robot_position_.y);
@@ -134,7 +153,7 @@ void Mapping::updateMap(geometry_msgs::Point scan_point)
   // Note that if the robot and the scan hit point are both within the map, it
   // is enough to guarantee that all intermediate cells will also be within the map
   // due to the nature of the expansion of the map boundaries
-  if (!robot_in_map.first || !ray_in_map.first)
+  while (!robot_in_map.first || !ray_in_map.first)
   {
     // Adjust the map boundaries based on the cell that is violating the boundaries
     adjustMapBounds(!robot_in_map.first? robot_in_map.second : ray_in_map.second);
@@ -142,6 +161,14 @@ void Mapping::updateMap(geometry_msgs::Point scan_point)
     // Get updated cell positions for the robot and ray cells after the boundary updates
     robot_cell = worldToMap(robot_position_.x, robot_position_.y);
     ray_cell = worldToMap(scan_point.x, scan_point.y);
+
+    // Check whether the robot is within the bounds of the map
+    robot_in_map =
+      inMapBounds(robot_cell.first, robot_cell.second);
+
+    // Check whether the point of reflection is within the bounds of the map
+    ray_in_map =
+      inMapBounds(ray_cell.first, ray_cell.second);
   }
 
   // Use Bresenham's Algorithm to determine which cells the ray has travelled through
@@ -178,10 +205,7 @@ void Mapping::updateMap(geometry_msgs::Point scan_point)
         parameters[0]*i < parameters[0]*(parameters[4] + parameters[2]);
         i += parameters[0])
   {
-    // Initialize the starting slope error
-    slope_error += 2*parameters[3];
-
-    // If slope threshold coniditon is met
+    // If slope threshold condition is met
     // Increment/Decrement the smaller variable and
     // reset the slope error
     if (parameters[6]*slope_error >= 0)
@@ -189,6 +213,9 @@ void Mapping::updateMap(geometry_msgs::Point scan_point)
       minor_value += parameters[1];
       slope_error -= parameters[7]*(2*parameters[2]);
     }
+
+    // Adjust the slope error
+    slope_error += 2*parameters[3];
 
     // Assign the x and y cell indexes
     x_cell = (x_more_y)? i : minor_value;
@@ -250,8 +277,10 @@ void Mapping::updateLogOdds(int16_t x_cell, int16_t y_cell, int16_t dx_hit, int1
   else
     probability_occupied = far_hit_occupancy_probability_;
 
+  double log_odds_change = std::log(probability_occupied / (1 - probability_occupied));
   // Update the log-odds of the cell based on the prior log-odds and the inverse sensor model
-  grid_map_(x_cell, y_cell) += std::log(probability_occupied / (1 - probability_occupied));
+  grid_map_(x_cell, y_cell) += (log_odds_change > 0? std::min(log_odds_change, saturation_log_odds_occupied_) :
+                                                     std::max(log_odds_change, -1 * saturation_log_odds_free_));
 }
 
 int8_t Mapping::logOddsToOccupancy(double x)
