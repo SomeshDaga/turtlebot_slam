@@ -312,7 +312,7 @@ void Mapping::updateLogOdds(int16_t x_cell, int16_t y_cell, int16_t dx_hit, int1
 
 int8_t Mapping::logOddsToOccupancy(double x)
 {
-  if (abs(x) < unknown_occupancy_odds_buffer_)
+  if (abs(x) <= unknown_occupancy_odds_buffer_)
     return static_cast<int8_t>(-1);
   else if (x < 0)
     return static_cast<int8_t>(0);
