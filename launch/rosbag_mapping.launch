@@ -1,6 +1,9 @@
 <?xml version="1.0"?>
 <launch>
-  <!-- Mapping Parameters -->
+
+  <arg name="mapping_backend"                 default="ours"/>
+
+  <!-- Mapping Parameters (Our Algorithm) -->
   <arg name="debug"                           default="false"/>
   <arg name="close_hit_occupancy_probability" default="0.9"/>
   <arg name="far_hit_occupancy_probability"   default="0.05"/>
@@ -36,7 +39,7 @@
               $(arg pause_option)
               $(arg bagfile)"/>
   
-  <include file="$(find turtlebot_slam)/launch/mapping.launch">
+  <include file="$(find turtlebot_slam)/launch/mapping.launch" unless="$(eval mapping_backend == 'gmapping')">
     <arg name="debug"                           value="$(arg debug)"/>
     <arg name="close_hit_occupancy_probability" value="$(arg close_hit_occupancy_probability)"/>
     <arg name="far_hit_occupancy_probability"   value="$(arg far_hit_occupancy_probability)"/>
@@ -46,4 +49,5 @@
     <arg name="skip_n_scans"                    value="$(arg skip_n_scans)"/>
   </include>
 
+  <include file="$(find turtlebot_slam)/launch/gmapping.launch" if="$(eval mapping_backend == 'gmapping')"/>
 </launch>

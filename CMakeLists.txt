@@ -39,6 +39,7 @@ catkin_package(
     dynamic_reconfigure
     gazebo_msgs
     geometry_msgs
+    gmapping
     nav_msgs
     sensor_msgs
     rospy
