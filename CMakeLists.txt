@@ -43,6 +43,8 @@ catkin_package(
     nav_msgs
     sensor_msgs
     rospy
+    rqt_reconfigure
+    rviz
     tf2
     tf2_ros
     turtlebot_description

@@ -25,6 +25,8 @@
   <depend>visualization_msgs</depend>
 
   <exec_depend>gmapping</exec_depend>
+  <exec_depend>rqt_reconfigure</exec_depend>
+  <exec_depend>rviz</exec_depend>
   <exec_depend>turtlebot_description</exec_depend>
 
   <export>

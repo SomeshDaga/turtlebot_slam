@@ -1,7 +1,11 @@
 <?xml version="1.0"?>
 <launch>
 
+  <!-- Mapping Backend -->
   <arg name="mapping_backend"                 default="ours"/>
+
+  <!-- RViz Configuration -->
+  <arg name="rviz_config"                     default="$(find turtlebot_slam)/rviz/mapping.rviz"/>
 
   <!-- Mapping Parameters (Our Algorithm) -->
   <arg name="debug"                           default="false"/>
@@ -30,6 +34,10 @@
 
   <!-- Publish TFs based on robot joint states -->
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+
+  <!-- Start up RViz for visualization -->
+  <node name="rviz" pkg="rviz" type="rviz"
+        args="-d $(arg rviz_config)"/>
 
   <!-- Play the data from the bagfile -->
   <node name="rosbag_play_node" pkg="rosbag" type="play"
