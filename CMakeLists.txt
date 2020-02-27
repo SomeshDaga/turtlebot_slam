@@ -23,6 +23,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   sensor_msgs
+  tf
   tf2
   tf2_geometry_msgs
   tf2_ros
@@ -43,6 +44,7 @@ catkin_package(
     rospy
     tf2
     tf2_ros
+    turtlebot_description
     visualization_msgs
   DEPENDS
     Boost

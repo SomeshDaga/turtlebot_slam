@@ -103,6 +103,7 @@ private:
 
   // Robot Pose
   geometry_msgs::Point robot_position_;
+  double robot_yaw_;
 
   // Mapping Parameters/Variables
   ros::Timer map_publish_timer_;

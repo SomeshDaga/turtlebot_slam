@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Mapping Parameters -->
+  <arg name="debug"                           default="false"/>
+  <arg name="close_hit_occupancy_probability" default="0.9"/>
+  <arg name="far_hit_occupancy_probability"   default="0.05"/>
+  <arg name="hit_threshold"                   default="8"/>
+  <arg name="occupancy_odds_buffer"           default="5.0"/>
+  <arg name="saturation_free"                 default="5.0"/>
+  <arg name="saturation_occupied"             default="5.0"/>
+  <arg name="skip_n_scans"                    default="10"/>
+
+  <!-- Rosbag parameters -->
+  <arg name="playback_rate"                   default="1"/>
+  <arg name="pause"                           default="true"/>
+  <arg name="pause_option"                    value="$(eval '--pause' if pause else '')"/>
+  <arg name="bagfile"                         default=""/>
+
+  <!-- Robot URDF -->
+  <arg name="robot_urdf"                      default="$(find turtlebot_description)/robots/kobuki_hexagons_kinect.urdf.xacro"/>
+
+  <!-- Bagfile will be used to publish the clock, so use_sim_time should be true -->
+  <param name="use_sim_time" value="true"/>
+
+  <!-- Load the robot description -->
+  <param name="robot_description" command="xacro $(arg robot_urdf)"/>
+
+  <!-- Publish TFs based on robot joint states -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+
+  <!-- Play the data from the bagfile -->
+  <node name="rosbag_play_node" pkg="rosbag" type="play"
+        output="screen"
+        args="--rate $(arg playback_rate)
+              --clock
+              $(arg pause_option)
+              $(arg bagfile)"/>
+  
+  <include file="$(find turtlebot_slam)/launch/mapping.launch">
+    <arg name="debug"                           value="$(arg debug)"/>
+    <arg name="close_hit_occupancy_probability" value="$(arg close_hit_occupancy_probability)"/>
+    <arg name="far_hit_occupancy_probability"   value="$(arg far_hit_occupancy_probability)"/>
+    <arg name="hit_threshold"                   value="$(arg hit_threshold)"/>
+    <arg name="saturation_free"                 value="$(arg saturation_free)"/>
+    <arg name="saturation_occupied"             value="$(arg saturation_occupied)"/>
+    <arg name="skip_n_scans"                    value="$(arg skip_n_scans)"/>
+  </include>
+
+</launch>

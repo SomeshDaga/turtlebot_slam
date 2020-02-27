@@ -10,9 +10,9 @@
 #include <ros/ros.h>
 #include <sensor_msgs/LaserScan.h>
 #include <std_msgs/ColorRGBA.h>
+#include <tf2/LinearMath/Transform.h>
 #include <tf2/utils.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <tf2/exceptions.h>
 #include <visualization_msgs/Marker.h>
 
 #include <Eigen/Dense>
@@ -49,6 +49,7 @@ Mapping::Mapping(ros::NodeHandle& nh,
   // Align the map and odom frame
   map_to_odom_tf_.header.frame_id = map_frame_;
   map_to_odom_tf_.child_frame_id = odom_frame_;
+  // Initialize the map to odom transform to the identity matrix (i.e. frames are aligned)
   map_to_odom_tf_.transform = tf2::getTransformIdentity<geometry_msgs::Transform>();
 
   // Let TFs be processed in a separate thread
@@ -59,8 +60,8 @@ Mapping::Mapping(ros::NodeHandle& nh,
   viz_pub_ = nh_.advertise<visualization_msgs::Marker>("bresenham_visualization", 1, true);
 
   // Initialize subscribers
-  // pose_sub_ = nh_.subscribe<gazebo_msgs::ModelStates>("gazebo/model_states", 1, &Mapping::poseCallback, this);
-  // ips_sub_ = nh_.subscribe("indoor_pos", 1, &Mapping::ipsCallback, this);
+  pose_sub_ = nh_.subscribe<gazebo_msgs::ModelStates>("gazebo/model_states", 1, &Mapping::poseCallback, this);
+  ips_sub_ = nh_.subscribe("indoor_pos", 1, &Mapping::ipsCallback, this);
   scan_sub_ = nh_.subscribe<sensor_msgs::LaserScan>("scan", 1, &Mapping::scanCallback, this);
 
   // Initialize the grid map to a default size of 20m x 20m
@@ -83,7 +84,50 @@ Mapping::~Mapping()
 void Mapping::spinOnce()
 {
   // Publish the map to odom transform
+  // Let the origin of the map be in the frame of the ips camera
+  // We know the position of the robot base in the odom frame (from tf tree)
+  // and the ips camera from the ips message. Hence, we should be able to
+  // calculate the map to odom transform
+
+  // Find the transformation from the odom frame to the robot frame
+  tf2::Transform odom_to_base_tf;
+  // Get position of robot in odom frame from tf tree
+  if (tf_buffer_.canTransform(odom_frame_, base_frame_, ros::Time(0)))
+  {
+    tf2::convert(
+      tf_buffer_.lookupTransform(odom_frame_,
+                                 base_frame_,
+                                 ros::Time(0)).transform,
+      odom_to_base_tf);
+  }
+  else
+  {
+    ROS_ERROR_THROTTLE(1.0,
+                       "Failed to get transform from %s to %s!",
+                       base_frame_.c_str(),
+                       odom_frame_.c_str());
+    return;
+  }
+
+  // The transformation from the map to the robot frame is given by the ips/gazebo system
+  tf2::Transform map_to_base_tf;
+  map_to_base_tf.setOrigin(tf2::Vector3(robot_position_.x,
+                                        robot_position_.y,
+                                        0.0));
+  // TODO(someshdaga): Unsure why the parameters are not in the right order (yaw, pitch, roll)
+  //                   Assigning yaw as the first parameter seems to produce a roll
+  map_to_base_tf.setRotation(tf2::Quaternion(0.0,
+                                             0.0,
+                                             robot_yaw_));
+
+
+  // Calculate transform from map to odom frame
+  tf2::convert(map_to_base_tf * odom_to_base_tf.inverse(), map_to_odom_tf_.transform);
+
+  // Set the header time for the transform
   map_to_odom_tf_.header.stamp = ros::Time::now();
+
+  // Broadcast the transform
   tf_broadcaster_.sendTransform(map_to_odom_tf_);
 
   // Process ROS Callbacks
@@ -117,23 +161,6 @@ void Mapping::drCallback(turtlebot_slam::MappingConfig &config, uint32_t level)
 
 void Mapping::updateMap(geometry_msgs::Point scan_point)
 {
-  geometry_msgs::TransformStamped base_to_odom_tf;
-  // Get position of robot in odom frame from tf tree
-  if (tf_buffer_.canTransform(odom_frame_, base_frame_, ros::Time(0)))
-    base_to_odom_tf = tf_buffer_.lookupTransform(odom_frame_, base_frame_, ros::Time(0));
-  else
-  {
-    ROS_ERROR_THROTTLE(1.0,
-                       "Failed to get transform from %s to %s!",
-                       base_frame_.c_str(),
-                       odom_frame_.c_str());
-    return;
-  }
-
-  robot_position_.x = base_to_odom_tf.transform.translation.x;
-  robot_position_.y = base_to_odom_tf.transform.translation.y;
-  robot_position_.z = 0.0;
-
   // Get the cell position of the robot
   std::pair<int16_t, int16_t> robot_cell = worldToMap(robot_position_.x,
                                                       robot_position_.y);
@@ -241,7 +268,7 @@ void Mapping::drawBresenham(std::vector<std::pair<int16_t, int16_t>> coords)
 {
   visualization_msgs::Marker bresenham_marker;
   bresenham_marker.header.stamp = ros::Time::now();
-  bresenham_marker.header.frame_id = odom_frame_;
+  bresenham_marker.header.frame_id = map_frame_;
   bresenham_marker.id = 0;
   bresenham_marker.type = visualization_msgs::Marker::LINE_STRIP;
   bresenham_marker.action = visualization_msgs::Marker::ADD;
@@ -300,7 +327,7 @@ void Mapping::publishMap(const ros::TimerEvent& e)
 
   // Fill in the metadata of the occupancy grid
   map_msg.header.stamp = ros::Time::now();
-  map_msg.header.frame_id = odom_frame_;
+  map_msg.header.frame_id = map_frame_;
   map_msg.info.resolution = map_resolution_;
   map_msg.info.width = static_cast<uint32_t>(grid_map_.rows());
   map_msg.info.height = static_cast<uint32_t>(grid_map_.cols());
@@ -337,6 +364,7 @@ void Mapping::ipsCallback(const geometry_msgs::PoseWithCovarianceStampedPtr& pos
 {
   robot_position_.x = pose->pose.pose.position.x;
   robot_position_.y = pose->pose.pose.position.y;
+  robot_yaw_ = tf2::getYaw(pose->pose.pose.orientation);
 }
 
 void Mapping::poseCallback(const gazebo_msgs::ModelStatesConstPtr& states)
@@ -356,24 +384,11 @@ void Mapping::poseCallback(const gazebo_msgs::ModelStatesConstPtr& states)
 
 void Mapping::scanCallback(const sensor_msgs::LaserScanConstPtr& scan)
 {
-  // Get the transformation from the map/odom frame to the sensor frame
-  geometry_msgs::TransformStamped scan_to_odom_tf;
-  std::string scan_frame = scan->header.frame_id;
-  if (scan_frame.front() == '/')
-    scan_frame = scan_frame.erase(0,1);
-
-  if (tf_buffer_.canTransform(odom_frame_, scan_frame, ros::Time(0)))
-    scan_to_odom_tf = tf_buffer_.lookupTransform(odom_frame_, scan_frame, ros::Time(0));
-  else
-  {
-    ROS_ERROR_THROTTLE(1.0,
-                       "Failed to get transform from %s to %s!",
-                       scan_frame.c_str(),
-                       odom_frame_.c_str());
-    return;
-  }
-
   // Note: Scans are obtained in the camera_depth_frame
+  //       Assume the frame is the same as the robot frame (impossible to tell
+  //       since we don't know how the ips frame relates to the robot/camera frame)
+  //       The frames for the robot and camera frame should be close enough to be considered
+  //       the same
   // We need to process one ray at a time
   for (uint16_t scan_idx=0; scan_idx < scan->ranges.size(); scan_idx += skip_n_scans_ + 1)
   {
@@ -383,20 +398,16 @@ void Mapping::scanCallback(const sensor_msgs::LaserScanConstPtr& scan)
         scan->ranges[scan_idx] > scan->range_max)
       continue;
 
-    // Get pose of range reading in the frame of the sensor
+    // Get pose of range reading in the frame of the map (ips/gazebo)
     geometry_msgs::Point scan_point;
     double theta = scan->angle_min + scan_idx * scan->angle_increment;
-    scan_point.x = scan->ranges[scan_idx] * cos(theta);
-    scan_point.y = scan->ranges[scan_idx] * sin(theta);
-
-    // Transform the pose into the odometry frame
-    geometry_msgs::Point transformed_scan_point;
-    tf2::doTransform(scan_point,
-                     transformed_scan_point,
-                     scan_to_odom_tf);
+    scan_point.x = robot_position_.x + scan->ranges[scan_idx] *
+                                                   cos(robot_yaw_ + theta);
+    scan_point.y = robot_position_.y + scan->ranges[scan_idx] *
+                                                   sin(robot_yaw_ + theta);
 
     // Update the log-odds for all cells traversed by this scan point
-    updateMap(transformed_scan_point);
+    updateMap(scan_point);
   }
 }
 

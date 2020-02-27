@@ -24,6 +24,8 @@
   <depend>tf2_ros</depend>
   <depend>visualization_msgs</depend>
 
+  <exec_depend>turtlebot_description</exec_depend>
+
   <export>
   </export>
 </package>
